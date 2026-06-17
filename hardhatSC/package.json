@@ -1,0 +1,19 @@
+{
+  "name": "hardhat-vuln-minimal",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "node": "npx hardhat node",
+    "compile": "npx hardhat compile",
+    "deploy:localhost": "npx hardhat run scripts/deploy.ts --network localhost"
+  },
+  "devDependencies": {
+    "hardhat": "^3.0.0",
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.2",
+    "@types/node": "^22.0.0",
+    "viem": "^2.0.0",
+    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.0"
+  }
+}
