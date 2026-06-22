@@ -1,31 +1,48 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import hre from "hardhat";
+import { parseEther } from "viem";
 
-describe("Reentrancy attack demo", function () {
-  it("drains funds from the vulnerable bank", async function () {
-    const [deployer, user, attackerEOA] = await ethers.getSigners();
+describe("Reentrancy attack demo", async () => {
+  it("drains funds from the vulnerable bank", async () => {
+    const { viem } = await hre.network.connect({ network: "localhost" });
 
-    const Bank = await ethers.getContractFactory("VulnerableBank");
-    const bank = await Bank.deploy();
-    await bank.waitForDeployment();
-    const bankAddress = await bank.getAddress();
+    const [deployer, user, attackerEOA] = await viem.getWalletClients();
+    const publicClient = await viem.getPublicClient();
 
-    await (await bank.connect(deployer).deposit({ value: ethers.parseEther("5") })).wait();
-    await (await bank.connect(user).deposit({ value: ethers.parseEther("5") })).wait();
+    const bank = await viem.deployContract("VulnerableReentrancy");
+    const bankAddress = bank.address;
 
-    const Attacker = await ethers.getContractFactory("ReentrancyAttacker");
-    const attacker = await Attacker.connect(attackerEOA).deploy(bankAddress);
-    await attacker.waitForDeployment();
-    const attackerAddress = await attacker.getAddress();
+    let hash = await bank.write.deposit([], {
+      account: deployer.account,
+      value: parseEther("5"),
+    });
+    await publicClient.waitForTransactionReceipt({ hash });
 
-    expect(await ethers.provider.getBalance(bankAddress)).to.equal(ethers.parseEther("10"));
+    hash = await bank.write.deposit([], {
+      account: user.account,
+      value: parseEther("5"),
+    });
+    await publicClient.waitForTransactionReceipt({ hash });
 
-    await (await attacker.connect(attackerEOA).attack({ value: ethers.parseEther("1") })).wait();
+    const attacker = await viem.deployContract("ReentrancyAttacker", [bankAddress], {
+      walletClient: attackerEOA,
+    });
+    const attackerAddress = attacker.address;
 
-    const bankBalanceAfter = await ethers.provider.getBalance(bankAddress);
-    const attackerContractBalance = await ethers.provider.getBalance(attackerAddress);
+    const balanceBefore = await publicClient.getBalance({ address: bankAddress });
+    assert.equal(balanceBefore, parseEther("10"));
 
-    expect(bankBalanceAfter).to.equal(0n);
-    expect(attackerContractBalance).to.be.greaterThanOrEqual(ethers.parseEther("11"));
+    hash = await attacker.write.attack([], {
+      account: attackerEOA.account,
+      value: parseEther("1"),
+    });
+    await publicClient.waitForTransactionReceipt({ hash });
+
+    const bankBalanceAfter = await publicClient.getBalance({ address: bankAddress });
+    const attackerContractBalance = await publicClient.getBalance({ address: attackerAddress });
+
+    assert.equal(bankBalanceAfter, 0n);
+    assert.ok(attackerContractBalance >= parseEther("11"));
   });
 });
